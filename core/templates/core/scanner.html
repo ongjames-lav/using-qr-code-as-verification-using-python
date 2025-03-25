@@ -1,0 +1,755 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Code Scanner</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #00f2ff;
+            --primary-glow: rgba(0, 242, 255, 0.5);
+            --success-color: #00ff9d;
+            --success-glow: rgba(0, 255, 157, 0.5);
+            --error-color: #ff2d55;
+            --error-glow: rgba(255, 45, 85, 0.5);
+            --dark-bg: #0a0a1a;
+            --darker-bg: #050510;
+            --light-text: #ffffff;
+            --gray-text: #8a8a9a;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg), var(--darker-bg));
+            color: var(--light-text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, rgba(0, 242, 255, 0.1), transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            padding: 16px;
+            gap: 16px;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: clamp(24px, 5vw, 32px);
+            margin-bottom: 16px;
+            width: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: row;
+            gap: 24px;
+            flex: 1;
+            width: 100%;
+            max-width: 1200px;
+            align-items: flex-start;
+        }
+
+        .scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+            backdrop-filter: blur(10px);
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            filter: brightness(1.2) contrast(1.1);
+        }
+
+        .scan-region {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(300px, 80vw);
+            height: min(300px, 80vw);
+            border: 3px solid var(--primary-color);
+            border-radius: 24px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7),
+                        0 0 20px var(--primary-glow);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7), 0 0 20px var(--primary-glow); }
+            50% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7), 0 0 30px var(--primary-glow); }
+            100% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7), 0 0 20px var(--primary-glow); }
+        }
+
+        .scan-region::before,
+        .scan-region::after {
+            content: '';
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-color: var(--primary-color);
+            border-style: solid;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .scan-region::before {
+            top: -3px;
+            left: -3px;
+            border-width: 3px 0 0 3px;
+        }
+
+        .scan-region::after {
+            bottom: -3px;
+            right: -3px;
+            border-width: 0 3px 3px 0;
+        }
+
+        .scanning-line {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
+            animation: scan 3s linear infinite;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+
+        .status-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+            max-width: 400px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            height: fit-content;
+        }
+
+        .status {
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+            width: 100%;
+            font-size: 18px;
+            background: var(--glass-bg);
+            border: 2px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .status.visible {
+            opacity: 1;
+        }
+
+        .success {
+            background: rgba(0, 255, 157, 0.1);
+            border-color: var(--success-color);
+            box-shadow: 0 0 20px var(--success-glow);
+        }
+
+        .error {
+            background: rgba(255, 45, 85, 0.1);
+            border-color: var(--error-color);
+            box-shadow: 0 0 20px var(--error-glow);
+        }
+
+        .loading {
+            background: rgba(0, 242, 255, 0.1);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--primary-color);
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+            vertical-align: middle;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .timer {
+            color: var(--primary-color);
+            text-align: center;
+            font-size: 48px;
+            font-weight: 700;
+            padding: 24px 48px;
+            background: var(--glass-bg);
+            border: 3px solid var(--glass-border);
+            border-radius: 20px;
+            margin: 12px 0;
+            box-shadow: 0 0 30px var(--primary-glow);
+            min-width: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            font-family: 'Segoe UI', monospace;
+            letter-spacing: 2px;
+        }
+
+        .timer.warning {
+            color: #ffd700;
+            border-color: #ffd700;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+        }
+
+        .timer.danger {
+            color: var(--error-color);
+            border-color: var(--error-color);
+            box-shadow: 0 0 30px var(--error-glow);
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .creator-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-top: 24px;
+            padding: 16px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .creator-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary-color);
+            text-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        .social-icons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .social-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            color: var(--light-text);
+            font-size: 20px;
+        }
+
+        .social-icon:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px var(--primary-glow);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--primary-color);
+        }
+
+        .social-icon i {
+            transition: all 0.3s ease;
+        }
+
+        .social-icon:hover i {
+            transform: scale(1.1);
+        }
+
+        button {
+            background: linear-gradient(45deg, var(--primary-color), #00a8ff);
+            color: var(--light-text);
+            border: none;
+            padding: 16px 36px;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            min-width: 180px;
+            box-shadow: 0 0 20px var(--primary-glow);
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px var(--primary-glow);
+        }
+
+        button.retry {
+            background: linear-gradient(45deg, var(--error-color), #ff1f5a);
+            box-shadow: 0 0 20px var(--error-glow);
+        }
+
+        button.retry:hover {
+            box-shadow: 0 0 30px var(--error-glow);
+        }
+
+        @media (min-width: 1024px) {
+            .container {
+                padding: 32px;
+            }
+
+            .main-content {
+                flex-direction: row;
+                align-items: flex-start;
+                gap: 32px;
+            }
+
+            .scanner-container {
+                flex: 1;
+                margin: 0;
+                max-width: 800px;
+            }
+
+            .status-container {
+                flex: 0 0 360px;
+                margin: 0;
+                align-self: stretch;
+                justify-content: flex-start;
+            }
+
+            .scan-region {
+                width: 350px;
+                height: 350px;
+            }
+        }
+
+        @media (min-width: 768px) and (max-width: 1023px) {
+            .container {
+                padding: 24px;
+            }
+
+            .scanner-container {
+                max-width: 700px;
+            }
+
+            .scan-region {
+                width: 300px;
+                height: 300px;
+            }
+
+            .status-container {
+                max-width: 700px;
+            }
+        }
+
+        @media (max-height: 600px) {
+            .container {
+                padding: 12px;
+            }
+
+            h1 {
+                font-size: 20px;
+                margin-bottom: 8px;
+            }
+
+            .scanner-container {
+                aspect-ratio: 16/9;
+            }
+
+            .scan-region {
+                width: 200px;
+                height: 200px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .scanner-container {
+                max-width: 100%;
+            }
+
+            .status-container {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>QR Code Scanner</h1>
+        <div class="main-content">
+            <div class="scanner-container">
+                <video id="video" autoplay playsinline></video>
+                <div class="scan-region">
+                    <div class="scanning-line"></div>
+                </div>
+            </div>
+            <div class="status-container">
+                <div id="status" class="status"></div>
+                <div class="timer" id="timer"></div>
+                <div class="controls">
+                    <button id="startButton">Start Scanner</button>
+                </div>
+                <div class="creator-info">
+                    <div class="creator-name">Created by:</div>
+                    <div class="creator-name">James Daryl Ong</div>
+                    <div class="creator-name">Spurgeon Malaca</div>
+                    <div class="creator-name">Carlle Kenneth Lugasan</div>
+                    <div class="social-icons">
+                        <a href="https://youtube.com/@jamesdarylong" target="_blank" class="social-icon">
+                            <i class="fab fa-youtube"></i>
+                        </a>
+                        <a href="mailto:ongjamesdaryl@gmail.com" class="social-icon">
+                            <i class="fas fa-envelope"></i>
+                        </a>
+                        <a href="https://www.facebook.com/hoyaaaa0/" target="_blank" class="social-icon">
+                            <i class="fab fa-facebook"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startButton = document.getElementById('startButton');
+        const statusDiv = document.getElementById('status');
+        const timerDiv = document.getElementById('timer');
+        let scanning = false;
+        let currentStream = null;
+        let countdownInterval = null;
+        let isProcessing = false;
+
+        // Start video stream
+        async function startVideo() {
+            try {
+                // Show countdown and verification message immediately
+                timerDiv.textContent = '10';
+                timerDiv.className = 'timer';
+                statusDiv.innerHTML = '<span class="loading-spinner"></span>Verifying QR Code...';
+                statusDiv.className = 'status loading visible';
+
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                currentStream = stream;
+                video.srcObject = stream;
+                scanning = true;
+                startButton.textContent = 'Stop Scanning';
+                startScanTimer();
+                startVerification();
+            } catch (err) {
+                showStatus('❌ Error accessing camera: ' + err.message, false);
+            }
+        }
+
+        // Initialize timer display
+        timerDiv.textContent = '10';
+        timerDiv.className = 'timer';
+
+        // Start verification process
+        function startVerification() {
+            let verificationStartTime = Date.now();
+            const verificationDuration = 10000; // 10 seconds in milliseconds
+
+            function verify() {
+                if (!scanning) return;
+
+                const elapsedTime = Date.now() - verificationStartTime;
+                
+                if (elapsedTime >= verificationDuration) {
+                    // Time's up - stop scanning
+                    stopVideo();
+                    showStatus('❌ No QR code found. Please try again.', false);
+                    return;
+                }
+
+                // Continue scanning
+                scanQRCode();
+            }
+
+            // Start verification immediately
+            verify();
+        }
+
+        // Scan QR code from video stream
+        async function scanQRCode() {
+            if (!scanning || isProcessing) return;
+
+            isProcessing = true;
+            const context = canvas.getContext('2d');
+            
+            // Ensure video is ready
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+                if (scanning) {
+                    setTimeout(scanQRCode, 500);
+                }
+                isProcessing = false;
+                return;
+            }
+
+            // Set canvas dimensions to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw video frame to canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            try {
+                // Convert canvas to blob with higher quality
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg', 1.0);
+                });
+
+                if (!blob || blob.size === 0) {
+                    if (scanning) {
+                        setTimeout(scanQRCode, 500);
+                    }
+                    isProcessing = false;
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('image', blob, 'scan.jpg');
+
+                const response = await fetch('/verify-qr/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    clearInterval(countdownInterval);
+                    showStatus(`✅ Access granted for ${data.user.username}`, true);
+                    timerDiv.textContent = '';
+                    stopVideo();
+                } else if (data.error === 'QR code is invalid') {
+                    clearInterval(countdownInterval);
+                    showStatus('❌ Invalid QR Code! Please try again.', false);
+                    timerDiv.textContent = '';
+                    stopVideo();
+                } else if (data.error === 'No QR code found') {
+                    // Continue scanning if no QR code found and time hasn't expired
+                    if (scanning && timerDiv.textContent !== 'Time expired') {
+                        setTimeout(scanQRCode, 500);
+                    }
+                } else {
+                    clearInterval(countdownInterval);
+                    showStatus('❌ Error: ' + data.error, false);
+                    timerDiv.textContent = '';
+                    stopVideo();
+                }
+            } catch (err) {
+                console.error('Error processing QR code:', err);
+                if (scanning && timerDiv.textContent !== 'Time expired') {
+                    setTimeout(scanQRCode, 500);
+                }
+            } finally {
+                isProcessing = false;
+                if (scanning && timerDiv.textContent !== 'Time expired') {
+                    setTimeout(scanQRCode, 500);
+                }
+            }
+        }
+
+        // Start scan timer
+        function startScanTimer() {
+            let timeLeft = 10;
+            timerDiv.textContent = timeLeft.toString().padStart(2, '0');
+            timerDiv.className = 'timer';
+
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                timerDiv.textContent = timeLeft.toString().padStart(2, '0');
+
+                // Update timer appearance based on remaining time
+                if (timeLeft <= 3) {
+                    timerDiv.className = 'timer danger';
+                } else if (timeLeft <= 5) {
+                    timerDiv.className = 'timer warning';
+                }
+
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    timerDiv.textContent = '0';
+                    timerDiv.className = 'timer danger';
+                    stopVideo();
+                    showStatus('❌ No QR code found. Please try again.', false);
+                }
+            }, 1000);
+        }
+
+        // Stop video stream
+        function stopVideo() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+            video.srcObject = null;
+            scanning = false;
+            startButton.textContent = 'Start Scanning';
+            clearInterval(countdownInterval);
+            // Only clear timer text if we're not at 0
+            if (timerDiv.textContent !== '0') {
+                timerDiv.textContent = '';
+            }
+        }
+
+        // Toggle scanner
+        startButton.addEventListener('click', () => {
+            if (scanning) {
+                stopVideo();
+            } else {
+                startVideo();
+            }
+        });
+
+        // Show status message
+        function showStatus(message, success) {
+            statusDiv.innerHTML = '';
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${success ? 'success' : 'error'} visible`;
+            
+            // Only add Scan Again button if we're not currently scanning
+            if (!scanning) {
+                const scanAgainButton = document.createElement('button');
+                scanAgainButton.className = success ? 'scan-another' : 'retry';
+                scanAgainButton.textContent = 'Scan Again';
+                scanAgainButton.onclick = () => {
+                    statusDiv.className = 'status';
+                    statusDiv.textContent = '';
+                    startVideo();
+                };
+                statusDiv.appendChild(scanAgainButton);
+            }
+        }
+
+        // Handle page visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && scanning) {
+                stopVideo();
+            }
+        });
+
+        // Handle orientation change
+        window.addEventListener('orientationchange', () => {
+            if (scanning) {
+                stopVideo();
+                setTimeout(startVideo, 500);
+            }
+        });
+    </script>
+</body>
+</html> 
+</html> 
